@@ -1,31 +1,19 @@
 ## CSV Seeder
 
-[![Latest Version on Packagist](https://img.shields.io/packagist/v/flynsarmy/csv-seeder.svg?style=flat-square)](https://packagist.org/packages/flynsarmy/csv-seeder)
-[![Software License](https://img.shields.io/badge/license-MIT-brightgreen.svg?style=flat-square)](LICENSE.md)
-![Build Status](https://github.com/Flynsarmy/laravel-csv-seeder/workflows/CI/badge.svg)
-[![Quality Score](https://scrutinizer-ci.com/g/Flynsarmy/laravel-csv-seeder/badges/quality-score.png)](https://scrutinizer-ci.com/g/flynsarmy/laravel-csv-seeder)
-[![Total Downloads](https://img.shields.io/packagist/dt/flynsarmy/csv-seeder?style=flat-square)](https://packagist.org/packages/flynsarmy/csv-seeder)
-                    
+**This is a fork of aurabx/laravel-csv-seeder, originally by Flyn San**
 
 ### Seed your database with CSV files
 
 This package allows CSV based seeds.
 
-
 ### Installation
 
-Require this package in your composer.json and run composer update (or run `composer require flynsarmy/csv-seeder:2.*` directly):
+Require this package in your composer.json and run composer update (or run `composer require aurabx/csv-seeder` directly):
 
 **For PHP 7.4+**
 
 ```json
-"flynsarmy/csv-seeder": "2.0.*"
-```
-
-**For older PHP versions**
-
-```json
-"flynsarmy/csv-seeder": "1.*"
+"aurabx/csv-seeder": "3.0.*"
 ```
 
 ### Usage
@@ -38,10 +26,10 @@ id,name
 2,Bar
 ```
 
-Seed classes must extend `Flynsarmy\CsvSeeder\CsvSeeder`, they must define the destination database table and CSV file path, and finally they must call `parent::run()` like so:
+Seed classes must extend `Aurabx\CsvSeeder\CsvSeeder`, they must define the destination database table and CSV file path, and finally they must call `parent::run()` like so:
 
 ```php
-use Flynsarmy\CsvSeeder\CsvSeeder;
+use Aurabx\CsvSeeder\CsvSeeder;
 
 class StopsTableSeeder extends CsvSeeder {
 
