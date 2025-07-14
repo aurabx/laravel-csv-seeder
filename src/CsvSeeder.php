@@ -1,14 +1,12 @@
 <?php
 
-namespace Flynsarmy\CsvSeeder;
+namespace Aurabx\CsvSeeder;
 
-use App;
-use DB;
+use Illuminate\Support\Facades\DB;
 use Exception;
-use Log;
+use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
 use Illuminate\Database\Seeder;
-use Illuminate\Database\Schema;
 use Illuminate\Support\Facades\Hash;
 
 /**
@@ -32,18 +30,18 @@ class CsvSeeder extends Seeder
     public string $filename = '';
 
     /**
-     * DB connection to use. Leave empty for default connection
+     * DB connection to use. Leave empty for the default connection
      */
     public string $connection = '';
 
     /**
-     * DB fields to be hashed before import, For example a password field.
+     * DB fields to be hashed before import, For example, a password field.
      */
     public array $hashable = ['password'];
 
     /**
      * An SQL INSERT query will execute every time this number of rows
-     * are read from the CSV. Without this, large INSERTS will silently
+     * is read from the CSV. Without this, large INSERTS will silently
      * fail.
      */
     public int $insert_chunk_size = 50;
@@ -81,7 +79,7 @@ class CsvSeeder extends Seeder
      * Mappings take the form of csvColNumber => dbColName.
      *
      * IE to read the first, third and fourth columns of your CSV only, use:
-     * array(
+     * array (
      *   0 => id,
      *   2 => name,
      *   3 => description,
@@ -92,8 +90,9 @@ class CsvSeeder extends Seeder
 
     /**
      * Run DB seed
+     * @throws Exception
      */
-    public function run()
+    public function run(): void
     {
         // Cache created_at and updated_at if we need to
         if ($this->timestamps) {
@@ -117,9 +116,7 @@ class CsvSeeder extends Seeder
     public function stripUtf8Bom(string $text): string
     {
         $bom = pack('H*', 'EFBBBF');
-        $text = preg_replace("/^$bom/", '', $text);
-
-        return $text;
+        return preg_replace("/^$bom/", '', $text);
     }
 
     /**
@@ -128,7 +125,7 @@ class CsvSeeder extends Seeder
      * @param string $filename
      * @return FALSE|resource
      */
-    public function openCSV(string $filename)
+    public function openCSV(string $filename): mixed
     {
         if (!file_exists($filename) || !is_readable($filename)) {
             Log::error("CSV insert failed: CSV " . $filename . " does not exist or is not readable.");
@@ -139,11 +136,9 @@ class CsvSeeder extends Seeder
         $finfo = finfo_open(FILEINFO_MIME_TYPE);
         $file_mime_type = finfo_file($finfo, $filename);
         finfo_close($finfo);
-        $gzipped = strcmp($file_mime_type, "application/x-gzip") == 0;
+        $gzipped = strcmp($file_mime_type, "application/x-gzip") === 0;
 
-        $handle = $gzipped ? gzopen($filename, 'r') : fopen($filename, 'r');
-
-        return $handle;
+        return $gzipped ? gzopen($filename, 'r') : fopen($filename, 'rb');
     }
 
     /**
@@ -151,7 +146,7 @@ class CsvSeeder extends Seeder
      *
      * @param string $filename
      * @param string $deliminator
-     * @return bool  Whether or not the import completed successfully.
+     * @return bool  Whether the import completed successfully.
      * @throws Exception
      */
     public function seedFromCSV(string $filename, string $deliminator = ","): bool
@@ -198,7 +193,7 @@ class CsvSeeder extends Seeder
             $data[$row_count] = $row;
 
             // Chunk size reached, insert
-            if (++$row_count == $this->insert_chunk_size) {
+            if (++$row_count === $this->insert_chunk_size) {
                 $success = $success && $this->insert($data);
                 $row_count = 0;
                 // clear the data array explicitly when it was inserted so
@@ -232,10 +227,13 @@ class CsvSeeder extends Seeder
 
         // skip csv columns that don't exist in the database
         foreach ($mapping as $index => $fieldname) {
-            if (!DB::connection($this->connection)->getSchemaBuilder()->hasColumn($this->table, $fieldname)) {
-                if (isset($mapping[$index])) {
-                    unset($mapping[$index]);
-                }
+            if (
+                isset($fieldname) &&
+                !DB::connection($this->connection)
+                    ->getSchemaBuilder()
+                    ->hasColumn($this->table, $fieldname)
+            ) {
+                        unset($mapping[$index]);
             }
         }
 
@@ -252,12 +250,12 @@ class CsvSeeder extends Seeder
      * @param array $mapping
      * @return array
      */
-    public function removeUnusedHashColumns(array $mapping)
+    public function removeUnusedHashColumns(array $mapping): array
     {
         $hashables = $this->hashable;
 
         foreach ($hashables as $key => $field) {
-            if (!in_array($field, $mapping)) {
+            if (!in_array($field, $mapping, true)) {
                 unset($hashables[$key]);
             }
         }
