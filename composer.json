@@ -1,32 +1,32 @@
 {
-    "name": "flynsarmy/csv-seeder",
+    "name": "aurabox/csv-seeder",
     "description": "Allows seeding of the database with CSV files",
     "keywords": ["laravel", "csv", "seed", "seeds", "seeding"],
     "license": "MIT",
     "authors": [
         {
-            "name": "Flyn San",
-            "email": "flynsarmy@gmail.com"
+            "name": "Aurabox",
+            "email": "hello@aurabox.cloud"
         }
-    ],
+    ],f
     "require": {
-        "php": ">=7.4",
-        "illuminate/support": ">=4.1.0"
+        "php": ">=8.0",
+        "illuminate/support": ">=10.0.0"
     },
     "autoload": {
         "psr-4": {
-            "Flynsarmy\\CsvSeeder\\": "src/"
+            "Aurabx\\CsvSeeder\\": "src/"
         }
     },
     "autoload-dev": {
         "psr-4": {
-            "Flynsarmy\\CsvSeeder\\Tests\\": "tests"
+            "Aurabx\\CsvSeeder\\Tests\\": "tests"
         }
     },
     "extra": {
         "laravel": {
             "providers": [
-                "Flynsarmy\\CsvSeeder\\CsvSeederServiceProvider"
+                "Aurabx\\CsvSeeder\\CsvSeederServiceProvider"
             ]
         }
     },
