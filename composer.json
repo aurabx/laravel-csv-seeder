@@ -8,7 +8,7 @@
             "name": "Aurabox",
             "email": "hello@aurabox.cloud"
         }
-    ],f
+    ],
     "require": {
         "php": ">=8.0",
         "illuminate/support": ">=10.0.0"
