@@ -1,5 +1,5 @@
 {
-    "name": "aurabox/csv-seeder",
+    "name": "aurabx/laravel-csv-seeder",
     "description": "Allows seeding of the database with CSV files",
     "keywords": ["laravel", "csv", "seed", "seeds", "seeding"],
     "license": "MIT",
