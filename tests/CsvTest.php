@@ -2,12 +2,14 @@
 
 namespace Aurabx\CsvSeeder\Tests;
 
-class CsvTest extends \Orchestra\Testbench\TestCase
+use Tests\TestCase;
+
+class CsvTest extends TestCase
 {
     /**
      * Setup the test environment.
      */
-    protected function setUp(): void
+    public function setUp(): void
     {
         parent::setUp();
 
@@ -418,7 +420,7 @@ class CsvTest extends \Orchestra\Testbench\TestCase
         $seeder->filename = __DIR__ . '/csvs/users.csv';
         $seeder->hashable = [];
         $seeder->offset_rows = 4;
-        $seeder->mapping = [
+        $seeder->csvMapping = [
             0 => 'id',
             1 => 'first_name',
             6 => 'age',

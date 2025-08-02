@@ -2,6 +2,7 @@
 
 namespace Aurabx\CsvSeeder;
 
+use Aurabx\LaravelShim\Str;
 use Illuminate\Support\Facades\DB;
 use Exception;
 use Illuminate\Support\Facades\Log;
@@ -13,7 +14,7 @@ use Illuminate\Support\Facades\Hash;
  * Taken from http://laravelsnippets.com/snippets/seeding-database-with-csv-files-cleanly
  * and modified to include insert chunking
  */
-class CsvSeeder extends Seeder
+abstract class CsvSeeder extends Seeder
 {
     /**
      * DB table name
@@ -85,7 +86,23 @@ class CsvSeeder extends Seeder
      *   3 => description,
      * )
      */
-    public array $mapping = [];
+    public array $csvMapping = [];
+
+    protected array $reverseMapping = [];
+
+    /**
+     * @var array
+     */
+    public array $dbToCsvMapping = [];
+
+    /**
+     * The internal prefix that is used to denote columns that are in the csv.
+     *
+     * If you happened to have a column called 'csv' you'd want to rename this.
+     *
+     * @var string
+     */
+    protected string $internal_mapping_prefix = 'csv';
 
 
     /**
@@ -94,17 +111,31 @@ class CsvSeeder extends Seeder
      */
     public function run(): void
     {
+        $this->configure();
+
         // Cache created_at and updated_at if we need to
         if ($this->timestamps) {
             if (!$this->created_at) {
-                $this->created_at = Carbon::now()->toIso8601String();
+                $this->created_at = Carbon::now()->toDateTimeString();
             }
             if (!$this->updated_at) {
-                $this->updated_at = Carbon::now()->toIso8601String();
+                $this->updated_at = Carbon::now()->toDateTimeString();
             }
         }
 
         $this->seedFromCSV($this->filename, $this->csv_delimiter);
+    }
+
+
+    /**
+     * @return void
+     */
+    public function configure(): void
+    {
+        $this->insert_chunk_size = 1;
+
+        // Disable query log to optimize large CSV imports.
+        DB::disableQueryLog();
     }
 
     /**
@@ -132,7 +163,7 @@ class CsvSeeder extends Seeder
             return false;
         }
 
-        // check if file is gzipped
+        // check if the file is gzipped
         $finfo = finfo_open(FILEINFO_MIME_TYPE);
         $file_mime_type = finfo_file($finfo, $filename);
         finfo_close($finfo);
@@ -155,56 +186,54 @@ class CsvSeeder extends Seeder
 
         // CSV doesn't exist or couldn't be read from.
         if ($handle === false) {
-            throw new Exception("CSV insert failed: CSV " . $filename . " does not exist or is not readable.");
+            throw new \RuntimeException("CSV insert failed: CSV " . $filename . " does not exist or is not readable.");
         }
 
         $success = true;
-        $row_count = 0;
         $data = [];
-        $mapping = $this->mapping ?: [];
+        $rowCount = 0;
         $offset = $this->offset_rows;
 
-        if ($mapping) {
-            $this->hashable = $this->removeUnusedHashColumns($mapping);
+        // If no mapping provided, read the first row as the header mapping.
+        if (!$this->csvMapping) {
+            $this->csvMapping = $this->getCsvMappingFromFirstRow($handle, $deliminator, $filename);
         }
 
-        while (($row = fgetcsv($handle, 0, $deliminator)) !== false) {
-            // Offset the specified number of rows
+        $this->reverseMapping = array_flip($this->csvMapping);
 
-            while ($offset-- > 0) {
-                continue 2;
+        $this->dbToCsvMapping = $this->getDbColumns();
+
+        // Initialize hashable columns based on mapping.
+        $this->hashable = $this->removeUnusedHashColumns($this->csvMapping);
+
+        // Skip offset rows if any.
+        for ($i = 0; $i < $offset; $i++) {
+            if ($this->getRow($handle, $deliminator) === false) {
+                break;
             }
+        }
 
-            // No mapping specified - the first row will be used as the mapping
-            // ie it's a CSV title row. This row won't be inserted into the DB.
-            if (!$mapping) {
-                $mapping = $this->createMappingFromRow($row);
-                $this->hashable = $this->removeUnusedHashColumns($mapping);
-                continue;
-            }
+        // Process each row.
+        while (($row = $this->getRow($handle, $deliminator)) !== false) {
+            $row = $this->readRow($row, $this->csvMapping);
 
-            $row = $this->readRow($row, $mapping);
-
-            // insert only non-empty rows from the csv file
+            // Skip empty rows.
             if (empty($row)) {
                 continue;
             }
 
-            $data[$row_count] = $row;
+            $data[$rowCount] = $row;
+            $rowCount++;
 
-            // Chunk size reached, insert
-            if (++$row_count === $this->insert_chunk_size) {
+            // If chunk size reached, perform insert.
+            if ($rowCount === $this->insert_chunk_size) {
                 $success = $success && $this->insert($data);
-                $row_count = 0;
-                // clear the data array explicitly when it was inserted so
-                // that nothing is left, otherwise a leftover scenario can
-                // cause duplicate inserts
-                $data = [];
+                $rowCount = 0;
+                $data = []; // Reset data after insert.
             }
         }
 
-        // Insert any leftover rows
-        //check if the data array explicitly if there are any values left to be inserted, if insert them
+        // Insert any leftover rows.
         if (count($data)) {
             $success = $success && $this->insert($data);
         }
@@ -222,22 +251,36 @@ class CsvSeeder extends Seeder
      */
     public function createMappingFromRow(array $row): array
     {
-        $mapping = $row;
-        $mapping[0] = $this->stripUtf8Bom($mapping[0]);
+        $mapping = [];
+        $mapping[0] = $this->stripUtf8Bom($row[0]);
 
         // skip csv columns that don't exist in the database
-        foreach ($mapping as $index => $fieldname) {
-            if (
-                isset($fieldname) &&
-                !DB::connection($this->connection)
-                    ->getSchemaBuilder()
-                    ->hasColumn($this->table, $fieldname)
-            ) {
-                        unset($mapping[$index]);
+        foreach ($row as $index => $column_name) {
+            if ($this->databaseHasColumn($column_name)) {
+                $mapping[$index] = $column_name;
             }
         }
 
         return $mapping;
+    }
+
+    /**
+     * Returns the column name.
+     *
+     * @param callable|string $column The column name or a callable that returns the column name.
+     *
+     * @return string
+     */
+    public function getCsvColumn(callable|string $column): string
+    {
+        if (is_callable($column)) {
+            return (string)$column();
+        }
+
+        return implode('.', [
+            $this->internal_mapping_prefix,
+            $column
+        ]);
     }
 
     /**
@@ -264,24 +307,74 @@ class CsvSeeder extends Seeder
     }
 
     /**
-     * Read a CSV row into a DB insertable array
-     *
-     * @param array $row        A row of data to read
-     * @param array $mapping    Array of csvCol => dbCol
      * @return array
      */
-    public function readRow(array $row, array $mapping): array
+    abstract public function getDbColumns(): array;
+
+    /**
+     * Read a CSV row into a DB insertable array
+     *
+     * @param array $csv_row A row of data to read
+     * @param array $mapping    Array of csvCol => dbCol
+     *
+     * @return array
+     */
+    public function readRow(array $csv_row, array $mapping): array
     {
         $row_values = [];
 
-        foreach ($mapping as $csvCol => $dbCol) {
-            if (!isset($row[$csvCol]) || $row[$csvCol] === '') {
-                $row_values[$dbCol] = null;
-            } else {
-                $row_values[$dbCol] = $this->should_trim ? trim($row[$csvCol]) : $row[$csvCol];
+        foreach ($this->dbToCsvMapping as $db_column => $csv_mapping) {
+            // Process callable mappings.
+            if (is_callable($csv_mapping)) {
+                $value = $csv_mapping($csv_row);
+                $row_values[$db_column] = $this->should_trim && is_string($value) ? trim($value) : $value;
+                continue;
+            }
+
+            // Process mappings specified as a string with a dot.
+            if (is_string($csv_mapping) && str_contains($csv_mapping, '.')) {
+                // Explode into two parts only.
+                [$prefix, $csv_column_name] = explode('.', $csv_mapping, 2);
+
+                // Check for internal mapping.
+                if ($prefix === $this->internal_mapping_prefix && isset($csv_column_name) && $csv_column_name !== '') {
+                    if (isset($this->reverseMapping[$csv_column_name])) {
+                        $csvIndex = $this->reverseMapping[$csv_column_name];
+                        $csvData = data_get($csv_row, $csvIndex);
+                        $row_values[$db_column] = $this->should_trim && is_string($csvData) ? trim($csvData) : $csvData;
+                    }
+                    continue;
+                }
+            }
+
+            // If the CSV mapping is numeric (or any other type) treat it as an index.
+            if (is_numeric($csv_mapping)) {
+                $csvData = data_get($csv_row, $csv_mapping);
+                $row_values[$db_column] = $this->should_trim && is_string($csvData) ? trim($csvData) : $csvData;
+                continue;
+            }
+
+            // Otherwise, assign the mapping value directly.
+            $row_values[$db_column] = $csv_mapping;
+        }
+
+        // Convert any column that has a boolean value or a boolean string to an integer:
+        // - Actual booleans are converted to 1 or 0.
+        // - Strings "true"/"false" (case‑insensitive) are converted to 1 or 0.
+        foreach ($row_values as $column => $value) {
+            if (is_bool($value)) {
+                $row_values[$column] = $value ? 1 : 0;
+            } elseif (is_string($value)) {
+                $lower = strtolower($value);
+                if ($lower === 'true') {
+                    $row_values[$column] = 1;
+                } elseif ($lower === 'false') {
+                    $row_values[$column] = 0;
+                }
             }
         }
 
+        // Process hashing if needed.
         if (!empty($this->hashable)) {
             foreach ($this->hashable as $columnToHash) {
                 if (isset($row_values[$columnToHash])) {
@@ -290,6 +383,7 @@ class CsvSeeder extends Seeder
             }
         }
 
+        // Assign timestamps if enabled.
         if ($this->timestamps) {
             $row_values['created_at'] = $this->created_at;
             $row_values['updated_at'] = $this->updated_at;
@@ -314,5 +408,46 @@ class CsvSeeder extends Seeder
         }
 
         return true;
+    }
+
+    /**
+     * @param mixed $handle
+     * @param string $deliminator
+     *
+     * @return array|false
+     */
+    public function getRow(mixed $handle, string $deliminator): array|false
+    {
+        return fgetcsv($handle, 0, $deliminator);
+    }
+
+    /**
+     * @param mixed $handle
+     * @param string $deliminator
+     * @param string $filename
+     *
+     * @return array
+     */
+    protected function getCsvMappingFromFirstRow(mixed $handle, string $deliminator, string $filename): array
+    {
+        $headerRow = $this->getRow($handle, $deliminator);
+        if ($headerRow === false) {
+            fclose($handle);
+            throw new \RuntimeException("CSV insert failed: Unable to read header row from CSV " . $filename);
+        }
+
+        return $this->createMappingFromRow($headerRow);
+    }
+
+    /**
+     * @param string $col
+     *
+     * @return bool
+     */
+    protected function databaseHasColumn(string $col): bool
+    {
+        return DB::connection($this->connection)
+            ->getSchemaBuilder()
+            ->hasColumn($this->table, $col);
     }
 }
