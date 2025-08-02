@@ -273,10 +273,10 @@ abstract class CsvSeeder extends Seeder
      */
     public function getCsvColumn(callable|string $column): string
     {
-        if (is_callable($column)) {
-            return (string)$column();
+        if ($column instanceof \Closure) {
+            return (string) $column();
         }
-
+    
         return implode('.', [
             $this->internal_mapping_prefix,
             $column
