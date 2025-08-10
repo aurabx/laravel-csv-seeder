@@ -58,6 +58,15 @@ abstract class CsvSeeder extends Seeder
     public int $offset_rows = 0;
 
     /**
+     * If true, columns that are not in the database will not be mapped from the CSV.
+     *
+     * Generally this should be false, as mismatched names can be remapped in getDbColumns()
+     *
+     * @var bool
+     */
+    public bool $exclude_missing_columns = false;
+
+    /**
      * Can be used to tell the import to trim any leading or trailing white space from the column;
      */
     public bool $should_trim = false;
@@ -256,7 +265,9 @@ abstract class CsvSeeder extends Seeder
 
         // skip csv columns that don't exist in the database
         foreach ($row as $index => $column_name) {
-            if ($this->databaseHasColumn($column_name)) {
+            if ($this->exclude_missing_columns && $this->databaseHasColumn($column_name)) {
+                $mapping[$index] = $column_name;
+            } else {
                 $mapping[$index] = $column_name;
             }
         }
